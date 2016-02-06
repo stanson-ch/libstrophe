@@ -28,6 +28,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <netdb.h>
 #include <fcntl.h>
 #include <arpa/nameser.h>
@@ -99,6 +100,7 @@ sock_t sock_connect(const char * const host, const unsigned int port)
         if (sock < 0)
             continue;
 
+
         err = sock_set_nonblocking(sock);
         if (err == 0) {
             err = connect(sock, ainfo->ai_addr, ainfo->ai_addrlen);
@@ -112,6 +114,40 @@ sock_t sock_connect(const char * const host, const unsigned int port)
     sock = ainfo == NULL ? -1 : sock;
 
     return sock;
+}
+
+int sock_set_keepalive(const sock_t sock, int timeout, int interval)
+{
+#ifdef _WIN32
+    /* TODO: implement setting all this stuff using SIO_KEEPALIVE_VALS */
+    /* it's not possible to set keepalive count in Windows, */
+    return 0;
+#else
+    int ret, optval = 0;
+
+    /* turn on keepalive */
+    if(timeout && interval) optval = 1;
+
+    ret = setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
+    if(ret < 0)
+	return ret;
+
+    if(optval) {
+	/* it's not possible to set keepalive count in Windows, so just use some
+	 * acceptable value for UNIX to keep things work the same */
+	optval = 5;
+	ret = setsockopt(sock, SOL_TCP, TCP_KEEPCNT, &optval, sizeof(optval));
+	if(ret < 0)
+	    return ret;
+	ret = setsockopt(sock, SOL_TCP, TCP_KEEPIDLE, &timeout, sizeof(timeout));
+	if(ret < 0)
+	    return ret;
+	ret = setsockopt(sock, SOL_TCP, TCP_KEEPINTVL, &interval, sizeof(interval));
+	if(ret < 0)
+	    return ret;
+    }
+    return 0;
+#endif
 }
 
 int sock_close(const sock_t sock)

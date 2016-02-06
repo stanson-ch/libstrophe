@@ -23,6 +23,7 @@
 #include <ws2tcpip.h>
 #include <windns.h>
 #include <Iphlpapi.h>
+#include <Mstcpip.h> /* struct tcp_keepalive for SIO_KEEPALIVE_VALS defined here*/
 #else
 #include <errno.h>
 #include <unistd.h>
@@ -118,16 +119,18 @@ sock_t sock_connect(const char * const host, const unsigned int port)
 
 int sock_set_keepalive(const sock_t sock, int timeout, int interval)
 {
+    int ret;
+    int optval = (timeout && interval) ? 1 : 0;
+
 #ifdef _WIN32
-    /* TODO: implement setting all this stuff using SIO_KEEPALIVE_VALS */
-    /* it's not possible to set keepalive count in Windows, */
-    return 0;
+    struct tcp_keepalive ka;
+    DWORD dw = 0;
+
+    ka.onoff = optval;
+    ka.keepalivetime = timeout;
+    ka.keepaliveinterval = interval;
+    ret = WSAIoctl(sock, SIO_KEEPALIVE_VALS, &ka, sizeof(ka), NULL, 0, &dw, NULL, NULL);
 #else
-    int ret, optval = 0;
-
-    /* turn on keepalive */
-    if(timeout && interval) optval = 1;
-
     ret = setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
     if(ret < 0)
 	return ret;
@@ -146,8 +149,8 @@ int sock_set_keepalive(const sock_t sock, int timeout, int interval)
 	if(ret < 0)
 	    return ret;
     }
-    return 0;
 #endif
+    return ret;
 }
 
 int sock_close(const sock_t sock)

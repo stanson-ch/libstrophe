@@ -195,6 +195,21 @@ void xmpp_conn_set_keepalive(xmpp_conn_t * const conn, int timeout, int interval
     }
 }
 
+static void conn_send_queue_purge(xmpp_conn_t * const conn)
+{
+    xmpp_ctx_t *ctx = conn->ctx;
+    xmpp_send_queue_t *sq, *tsq;
+
+    /* free queued */
+    sq = conn->send_queue_head;
+    while (sq) {
+        tsq = sq;
+        sq = sq->next;
+        xmpp_free(ctx, tsq->data);
+        xmpp_free(ctx, tsq);
+    }
+}
+
 /** Release a Strophe connection object.
  *  Decrement the reference count by one for a connection, freeing the
  *  connection object if the count reaches 0.
@@ -208,7 +223,6 @@ void xmpp_conn_set_keepalive(xmpp_conn_t * const conn, int timeout, int interval
 int xmpp_conn_release(xmpp_conn_t * const conn)
 {
     xmpp_ctx_t *ctx;
-    xmpp_send_queue_t *sq, *tsq;
     xmpp_connlist_t *item, *prev;
     xmpp_handlist_t *hlitem, *thli;
     hash_iterator_t *iter;
@@ -290,14 +304,7 @@ int xmpp_conn_release(xmpp_conn_t * const conn)
 
         parser_free(conn->parser);
 
-	/* free queued */
-	sq = conn->send_queue_head;
-	while (sq) {
-	    tsq = sq;
-	    sq = sq->next;
-	    xmpp_free(ctx, tsq->data);
-	    xmpp_free(ctx, tsq);
-	}
+	conn_send_queue_purge(conn);
 
         if (conn->domain) xmpp_free(ctx, conn->domain);
         if (conn->jid) xmpp_free(ctx, conn->jid);
@@ -482,6 +489,8 @@ int xmpp_connect_client(xmpp_conn_t * const conn,
      * hard to fix, since we'd have to detect and fire off the callback
      * from within the event loop */
 
+    conn_send_queue_purge(conn);
+
     conn->state = XMPP_STATE_CONNECTING;
     conn->timeout_stamp = time_stamp();
     xmpp_debug(conn->ctx, "xmpp", "attempting to connect to %s", domain);
@@ -554,6 +563,8 @@ int xmpp_connect_component(xmpp_conn_t * const conn, const char * const server,
      * successful, though this is pretty unlikely.  This would be a little
      * hard to fix, since we'd have to detect and fire off the callback
      * from within the event loop */
+
+    conn_send_queue_purge(conn);
 
     conn->state = XMPP_STATE_CONNECTING;
     conn->timeout_stamp = time_stamp();
